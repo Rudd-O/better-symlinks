@@ -1,0 +1,152 @@
+#!/usr/bin/python3
+
+import argparse
+import os
+import shlex
+import subprocess
+import sys
+import tempfile
+
+
+def walker(paths):
+    for arg in paths:
+        arg = os.path.abspath(arg)
+        for b, dirs, files in (
+            os.walk(arg)
+            if (os.path.isdir(arg) and not os.path.islink(arg))
+            else [(os.path.dirname(arg), [], [os.path.basename(arg)])]
+        ):
+            for f in files:
+                p = os.path.join(b, f)
+                yield p
+
+
+def atomically_create_symlink(src, dst):
+    d, f = os.path.dirname(src), os.path.basename(src)
+    tmpd = tempfile.mkdtemp(prefix=os.path.join(d, "tmp"))
+    tmpf = os.path.join(tmpd, f)
+    try:
+        os.symlink(dst, tmpf)
+        os.rename(tmpf, src)
+    finally:
+        os.rmdir(tmpd)
+
+
+def relativize_symlink(p, dry_run):
+    b = os.path.dirname(p)
+    cur = os.readlink(p)
+    dst = os.path.realpath(p)
+    exists = os.path.exists(dst)
+    reldst = os.path.relpath(dst, b)
+    if reldst != cur:
+        if dry_run:
+            if exists:
+                print(
+                    shlex.quote(p),
+                    ":",
+                    shlex.quote(cur),
+                    "->",
+                    shlex.quote(reldst),
+                )
+            else:
+                print(
+                    shlex.quote(p),
+                    ":",
+                    shlex.quote(cur),
+                    "->",
+                    "(untouched -- destination does not exist)",
+                )
+        else:
+            if exists:
+                atomically_create_symlink(p, reldst)
+
+
+def sed_symlink(p, sed_expr, dry_run):
+    cur = os.readlink(p)
+    proc = subprocess.run(
+        ["sed", "-r", "--", os.fsencode(sed_expr)],
+        input=os.fsencode(cur),
+        capture_output=True,
+        check=True,
+    )
+    new_ = os.fsdecode(proc.stdout)
+
+    if new_ != cur:
+        if dry_run:
+            print(
+                shlex.quote(p),
+                ":",
+                shlex.quote(cur),
+                "->",
+                shlex.quote(new_),
+            )
+        else:
+            atomically_create_symlink(p, new_)
+
+
+def diagnose_symlink(p):
+    cur = os.path.join(os.path.dirname(p), os.readlink(p))
+    if not os.path.exists(cur):
+        print(
+            "broken:",
+            shlex.quote(p),
+            "->",
+            shlex.quote(cur),
+        )
+
+
+def relativize(args):
+    for p in walker(args.paths):
+        if not os.path.islink(p):
+            continue
+        relativize_symlink(p, dry_run=args.dry_run)
+
+
+def sed(args):
+    for p in walker(args.paths):
+        if not os.path.islink(p):
+            continue
+        sed_symlink(p, sed_expr=args.sed_expr, dry_run=args.dry_run)
+
+
+def diagnose(args):
+    for p in walker(args.paths):
+        if not os.path.islink(p):
+            continue
+        diagnose_symlink(p)
+
+
+parser = argparse.ArgumentParser(prog=os.path.basename(__file__))
+parser.add_argument(
+    "-n",
+    "--dry-run",
+    action="store_true",
+    help="do nothing -- just show onscreen what would be done, if any changes would take place",
+)
+subparsers = parser.add_subparsers()
+
+relativize_subparser = subparsers.add_parser(
+    "relativize",
+    help="recursively relativizes any symlinks specified on the command line as well as in any subdirectories, provided that the symlinks point to paths that exist",
+)
+relativize_subparser.add_argument("paths", nargs="+", type=str)
+relativize_subparser.set_defaults(func=relativize)
+
+sed_subparser = subparsers.add_parser(
+    "sed",
+    help="runs a sed expression on the contents of symlinks specified on the command line as well as in any subdirectories, then replaces the symlinks with the results of the sed output",
+)
+sed_subparser.add_argument("sed_expr", type=str)
+sed_subparser.add_argument("paths", nargs="+", type=str)
+sed_subparser.set_defaults(func=sed)
+
+diagnose_subparser = subparsers.add_parser(
+    "diagnose",
+    help="diagnoses broken symlinks",
+)
+diagnose_subparser.add_argument("paths", nargs="+", type=str)
+diagnose_subparser.set_defaults(func=diagnose)
+
+
+args = parser.parse_args()
+args.func(args)
