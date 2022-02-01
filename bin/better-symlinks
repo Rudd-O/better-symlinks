@@ -21,12 +21,13 @@ def walker(paths):
 
 
 def atomically_create_symlink(src, dst):
-    d, f = os.path.dirname(src), os.path.basename(src)
+    abssrc = os.path.abspath(src)
+    d, f = os.path.split(abssrc)
     tmpd = tempfile.mkdtemp(prefix=os.path.join(d, "tmp"))
     tmpf = os.path.join(tmpd, f)
     try:
         os.symlink(dst, tmpf)
-        os.rename(tmpf, src)
+        os.rename(tmpf, abssrc)
     finally:
         os.rmdir(tmpd)
 
