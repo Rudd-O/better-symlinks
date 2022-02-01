@@ -40,23 +40,13 @@ def relativize_symlink(p, dry_run):
     reldst = os.path.relpath(dst, b)
     if reldst != cur:
         if exists:
-            print(
-                shlex.quote(p),
-                ":",
-                shlex.quote(cur),
-                "->",
-                shlex.quote(reldst),
-            )
+            print(shlex.quote(p))
+            print("   ", shlex.quote(cur), "->", shlex.quote(reldst))
             if not dry_run:
                 atomically_create_symlink(p, reldst)
         else:
-            print(
-                shlex.quote(p),
-                ":",
-                shlex.quote(cur),
-                "->",
-                "(untouched -- destination does not exist)",
-            )
+            print(shlex.quote(p))
+            print("   ", shlex.quote(cur), "->", "(untouched -- destination does not exist)")
 
 
 def sed_symlink(p, sed_expr, dry_run):
@@ -70,13 +60,8 @@ def sed_symlink(p, sed_expr, dry_run):
     new_ = os.fsdecode(proc.stdout)
 
     if new_ != cur:
-        print(
-            shlex.quote(p),
-            ":",
-            shlex.quote(cur),
-            "->",
-            shlex.quote(new_),
-        )
+        print(shlex.quote(p))
+        print("   ", shlex.quote(cur), "->", shlex.quote(new_))
         if not dry_run:
             atomically_create_symlink(p, new_)
 
