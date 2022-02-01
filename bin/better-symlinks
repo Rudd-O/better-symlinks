@@ -10,7 +10,6 @@ import tempfile
 
 def walker(paths):
     for arg in paths:
-        arg = os.path.abspath(arg)
         for b, dirs, files in (
             os.walk(arg)
             if (os.path.isdir(arg) and not os.path.islink(arg))
@@ -33,7 +32,8 @@ def atomically_create_symlink(src, dst):
 
 
 def relativize_symlink(p, dry_run):
-    b = os.path.dirname(p)
+    absp = os.path.abspath(p)
+    b = os.path.dirname(absp)
     cur = os.readlink(p)
     dst = os.path.realpath(p)
     exists = os.path.exists(dst)
